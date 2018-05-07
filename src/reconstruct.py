@@ -1,8 +1,12 @@
 import numpy as np
 import cv2
 import math
+import operator
+import tensorflow as tf
 
-def compute(file, letter):
+def compute(file):
+    charachters = []
+
     img = cv2.imread(file)
     # define range of blue color in HSV
     low = np.array([0,0,0])
@@ -73,24 +77,6 @@ def compute(file, letter):
 
     cv2.imwrite('/home/max/src/tensorfun/ocr/raw_contours.jpg', imgcolor)
 
-    # def getLetter(loc):
-    #     if(loc < b1):
-    #         return ''.join(map(unichr, [letterStart]))
-    #     elif(loc < b2):
-    #         return ''.join(map(unichr, [letterStart+32]))
-    #     elif(loc < b3):
-    #         return ''.join(map(unichr, [letterStart+1]))
-    #     elif(loc < b4):
-    #         return ''.join(map(unichr, [letterStart+33]))
-    #     elif(loc < b5):
-    #         return ''.join(map(unichr, [letterStart+2]))
-    #     elif(loc < b6):
-    #         return ''.join(map(unichr, [letterStart+34]))
-    #     elif(loc < b7):
-    #         return ''.join(map(unichr, [letterStart+3]))
-    #     else:
-    #         return ''.join(map(unichr, [letterStart+35]))
-
     def resize(img, maxVal):
         height, width = img.shape
         scale = 1.0/ max(height, width)
@@ -110,8 +96,7 @@ def compute(file, letter):
         combine = empty
         return combine
 
-
-    def findSub(img, label, oy):
+    def findSub(img, label):
         kernel2 = np.ones((6,2),np.uint8)
         erosion2 = cv2.erode(img,kernel2,iterations = 1)
         im3, contours2, hierarchy2 = cv2.findContours(erosion2,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
@@ -148,9 +133,9 @@ def compute(file, letter):
                 if (x2 - x) > 50 :
                     crop_erosion = erosion2[y:y2, x:x2]
                     cv2.imshow("image" + str(label), imgcolor2)
-                    findSub(crop_erosion, str(label) + "_" + str(i), oy)
+                    findSub(crop_erosion, str(label) + "_" + str(i))
                 else:
-                    cv2.imwrite('/media/pics/chars/' + letter + str(label) + "_" + str(i) + ".jpg", output)
+                    charachters.append({'x':x, 'y':y, 'h': (y2-y), 'w':(x2-x), 'img': output})
 
     for i in range(0, len(boundingRectsH)):
         y = boundingRectsY[i]
@@ -159,26 +144,70 @@ def compute(file, letter):
         x2 = x + boundingRectsW[i]
         if (y2-y) + (x2-x) > 120:
             crop_img = thresh[y:y2, x:x2]
-            findSub(crop_img, i, y)
+            findSub(crop_img, i)
         elif (y2-y) + (x2-x) > 20:
             crop_img = erosion[y:y2, x:x2]
             resized_image = resize(crop_img, 10)
             # output = cv2.inRange(resized_image, 1, 255)
             output = resized_image
-            cv2.imwrite('/media/pics/chars/' + letter + str(i) + ".jpg", output)
+            charachters.append({'x':x, 'y':y, 'h': (y2-y), 'w':(x2-x), 'img': output})
 
 
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-for z in range(0, 26):
-    compute('/home/max/src/tensorfun/ocr/training_data/page_' + '{0:0>4}'.format(z) + ".jpg", ''.join(map(unichr, [65+z])))
-    print "Done with " + ''.join(map(unichr, [65+z]))
+    for char in charachters:
+        cv2.rectangle(img, (char['x'],char['y']), (char['x']+char['w'], char['y']+char['h']), (0,0,255), 2)
+    cv2.imwrite('/home/max/src/tensorfun/ocr/raw_charsFound.jpg', img)
 
-# compute('/home/max/src/tensorfun/ocr/1.jpeg', 65,    558, 834, 1106, 1376, 1734, 2000, 2344)
-# compute('/home/max/src/tensorfun/ocr/2.jpeg', 65+4*1,558, 834, 1106, 1376, 1665, 1935, 2233)
-# compute('/home/max/src/tensorfun/ocr/3.jpeg', 65+4*2,558, 834, 1106, 1376, 1665, 1935, 2233)
-# compute('/home/max/src/tensorfun/ocr/4.jpeg', 65+4*3,558, 834, 1106, 1376, 1665, 1935, 2233)
-# compute('/home/max/src/tensorfun/ocr/5.jpeg', 65+4*4,558, 834, 1106, 1376, 1665, 1935, 2233)
-# compute('/home/max/src/tensorfun/ocr/6.jpeg', 65+4*5,558, 834, 1106, 1376, 1665, 1935, 2233)
-# compute('/home/max/src/tensorfun/ocr/7.jpeg', 65+4*6,558, 834, 1106, 1376, 1665, 1935, 2233)
+    return charachters
+
+def sortChars (chars, line_height, line_offset, number_of_lines):
+    lines = [None]*number_of_lines
+    for i in range(0,number_of_lines):
+        lines[i] = []
+    for char in chars:
+        line = math.floor((char['y']-line_offset)/line_height)
+        lines[int(line)].append(char)
+    for i in range(len(lines)):
+        line = lines[i]
+        lines[i] = sorted(line, key=operator.itemgetter('x'))
+    return lines
+
+charachters = compute('/home/max/src/tensorfun/ocr/coverletter.jpeg')
+lines = sortChars(charachters, 2576/22, 280, 22)
+for i in range(0, len(lines)):
+    line = lines[i]
+    for k in range(0, len(line)):
+        cv2.imwrite('/media/pics/reconstruct/char_' + str(i) + "_" + str(k) + ".jpeg", line[k]['img'])
+
+def getBytes(img):
+    np_image_data = np.asarray(img)
+    np_image_data=cv2.normalize(np_image_data.astype('float'), None, -0.5, .5, cv2.NORM_MINMAX)
+    np_final = np.concatenate(np_image_data,axis=0)
+    return np_final
+
+
+# PREDICT
+
+x = tf.placeholder("float", [None, 100])
+y = tf.placeholder("float", [None, 26])  # None is for infinite
+W = tf.Variable(tf.zeros([100, 26]))
+b = tf.Variable(tf.zeros([26]))
+# LOGISTIC REGRESSION MODEL
+actv = tf.nn.softmax(tf.matmul(x, W) + b)
+decoder = tf.argmax(actv, axis=1)
+
+# Add ops to save and restore all the variables.
+saver = tf.train.Saver()
+
+sess = tf.Session()
+saver.restore(sess, "/media/pics/model.ckpt")
+for i in range(0, len(lines)):
+    line = lines[i]
+    lineDecode = ""
+    for k in range(0, len(line)):
+        if k > 0 and line[k]['x'] - line[k-1]['x'] - line[k-1]['w'] > 10:
+            lineDecode += " "
+        lineDecode += ''.join(map(unichr, [sess.run(decoder, {x: [getBytes(lines[i][k]['img'])]})[0] + 65]))
+    print lineDecode
