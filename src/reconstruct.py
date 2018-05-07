@@ -81,8 +81,8 @@ def compute(file):
         height, width = img.shape
         scale = 1.0/ max(height, width)
         size = maxVal
-        if max(height, width)/5 < maxVal:
-            size = max(height, width)/5
+        if max(height, width)/1.2 < maxVal:
+            size = max(height, width)/1.2
         newSize = (int(size*width*scale), int(size*height*scale))
         if newSize[0] < 1:
             newSize = (1, newSize[1])
@@ -127,7 +127,7 @@ def compute(file):
             #     findSub(crop_img, i)
             if (y2-y) + (x2-x) > 40:
                 crop_img = img[y:y2, x:x2]
-                resized_image = resize(crop_img, 10)
+                resized_image = resize(crop_img, 28)
                 # output = cv2.inRange(resized_image, 1, 255)
                 output = resized_image
                 if (x2 - x) > 50 :
@@ -147,7 +147,7 @@ def compute(file):
             findSub(crop_img, i)
         elif (y2-y) + (x2-x) > 20:
             crop_img = erosion[y:y2, x:x2]
-            resized_image = resize(crop_img, 10)
+            resized_image = resize(crop_img, 28)
             # output = cv2.inRange(resized_image, 1, 255)
             output = resized_image
             charachters.append({'x':x, 'y':y, 'h': (y2-y), 'w':(x2-x), 'img': output})
@@ -190,13 +190,51 @@ def getBytes(img):
 
 # PREDICT
 
-x = tf.placeholder("float", [None, 100])
-y = tf.placeholder("float", [None, 26])  # None is for infinite
-W = tf.Variable(tf.zeros([100, 26]))
-b = tf.Variable(tf.zeros([26]))
-# LOGISTIC REGRESSION MODEL
-actv = tf.nn.softmax(tf.matmul(x, W) + b)
-decoder = tf.argmax(actv, axis=1)
+def weight_variable(shape):
+  initial = tf.truncated_normal(shape, stddev=0.1)
+  return tf.Variable(initial)
+
+def bias_variable(shape):
+  initial = tf.constant(0.1, shape=shape)
+  return tf.Variable(initial)
+
+def conv2d(x, W):
+  return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+
+def max_pool_2x2(x):
+  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
+                        strides=[1, 2, 2, 1], padding='SAME')
+
+x = tf.placeholder("float", [None, 784])
+y_ = tf.placeholder("float", [None, 26])  # None is for infinite
+W_conv1 = weight_variable([5, 5, 1, 32])
+b_conv1 = bias_variable([32])
+
+x_image = tf.reshape(x, [-1, 28, 28, 1])
+h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+h_pool1 = max_pool_2x2(h_conv1)
+
+W_conv2 = weight_variable([5, 5, 32, 64])
+b_conv2 = bias_variable([64])
+
+h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+h_pool2 = max_pool_2x2(h_conv2)
+
+W_fc1 = weight_variable([7 * 7 * 64, 1024])
+b_fc1 = bias_variable([1024])
+
+h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
+h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+
+keep_prob = tf.placeholder(tf.float32)
+h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+
+W_fc2 = weight_variable([1024, 26])
+b_fc2 = bias_variable([26])
+
+y_conv = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
+
+decoder = tf.argmax(y_conv, axis=1)
 
 # Add ops to save and restore all the variables.
 saver = tf.train.Saver()
@@ -209,5 +247,7 @@ for i in range(0, len(lines)):
     for k in range(0, len(line)):
         if k > 0 and line[k]['x'] - line[k-1]['x'] - line[k-1]['w'] > 10:
             lineDecode += " "
-        lineDecode += ''.join(map(unichr, [sess.run(decoder, {x: [getBytes(lines[i][k]['img'])]})[0] + 65]))
+        data = {x: [getBytes(lines[i][k]['img'])], keep_prob: 1.0}
+        decodedResult = sess.run(decoder, data)
+        lineDecode += ''.join(map(unichr, [decodedResult[0] + 65]))
     print lineDecode

@@ -95,8 +95,8 @@ def compute(file, letter):
         height, width = img.shape
         scale = 1.0/ max(height, width)
         size = maxVal
-        if max(height, width)/5 < maxVal:
-            size = max(height, width)/5
+        if max(height, width)/1.2 < maxVal:
+            size = max(height, width)/1.2
         newSize = (int(size*width*scale), int(size*height*scale))
         if newSize[0] < 1:
             newSize = (1, newSize[1])
@@ -142,7 +142,7 @@ def compute(file, letter):
             #     findSub(crop_img, i)
             if (y2-y) + (x2-x) > 40:
                 crop_img = img[y:y2, x:x2]
-                resized_image = resize(crop_img, 10)
+                resized_image = resize(crop_img, 28)
                 # output = cv2.inRange(resized_image, 1, 255)
                 output = resized_image
                 if (x2 - x) > 50 :
@@ -162,7 +162,7 @@ def compute(file, letter):
             findSub(crop_img, i, y)
         elif (y2-y) + (x2-x) > 20:
             crop_img = erosion[y:y2, x:x2]
-            resized_image = resize(crop_img, 10)
+            resized_image = resize(crop_img, 28)
             # output = cv2.inRange(resized_image, 1, 255)
             output = resized_image
             cv2.imwrite('/media/pics/chars/' + letter + str(i) + ".jpg", output)
